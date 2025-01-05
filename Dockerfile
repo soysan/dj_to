@@ -1,4 +1,4 @@
-ARG version=3.11
+ARG version=3.13
 
 FROM python:$version-slim as builder
 
