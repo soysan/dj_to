@@ -1,1 +1,8 @@
 .env
+.DS_Store
+
+dj_to/db.sqlite3
+dj_to/app/__pycache__
+
+.vscode
+.venv
