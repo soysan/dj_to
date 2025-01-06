@@ -1,34 +1,52 @@
-ARG version=3.13
+ARG PYTHON_VERSION=3.13 \
+  POETRY_VERSION=1.8.5
 
-FROM python:$version-slim as builder
+FROM python:${PYTHON_VERSION}-slim AS base
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
+ARG POETRY_VERSION
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+  curl \
+  && rm -rf /var/lib/apt/lists/* \
+  && pip install "poetry==${POETRY_VERSION}"
+
+ENV \
+  PYTHONDONTWRITEBYTECODE=1 \
   PYTHONUNBUFFERED=1 \
-  PATH=/root/.local/bin:$PATH \
-  PIP_NO_CACHE_DIR=1 \
-  PIP_DISABLE_PIP_VERSION_CHECK=1 \
-  POETRY_VIRTUALENVS_IN_PROJECT=1
-
-WORKDIR /app
+  PIP_NO_CACHE_DIR=off \
+  PIP_DISABLE_PIP_VERSION_CHECK=on \
+  VIRTUAL_ENV="/.venv" \
+  PATH=${VIRTUAL_ENV}/bin:$PATH \
+  POETRY_VIRTUALENVS_CREATE=false \
+  POETRY_VIRTUALENVS_IN_PROJECT=false \
+  POETRY_NO_INTERACTION=1 \
+  POETRY_VERSION=${POETRY_VERSION}
 
 COPY pyproject.toml poetry.lock ./
 
-RUN pip install poetry
-RUN poetry install --no-root
+RUN python -m venv ${VIRTUAL_ENV} \
+  && . ${VIRTUAL_ENV}/bin/activate \
+  && poetry install --no-root
 
-ARG version
-FROM python:$version-slim as runtime
+FROM base AS builder
+WORKDIR /app
 
-ENV VIRTUAL_ENV=/app/.venv \
-  PATH=/app/.venv/bin:$PATH \
-  USER_NAME=hoge_user
+COPY . .
+RUN poetry install --no-dev
+RUN poetry build -f wheel
 
-COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
+FROM base AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+  PYTHONUNBUFFERED=1 \
+  PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
-COPY . /app
 
-RUN useradd -r -u 1000 $USER_NAME
-RUN chown -R $USER_NAME:$USER_NAME /app
+COPY --from=builder app/dist/*.whl ./
+COPY dj_to/ app/dj_to/
 
-USER $USER_NAME
+RUN pip install --no-cache-dir *.whl \
+  && rm -rf *.whl
+
+WORKDIR /app/dj_to
